@@ -13,7 +13,7 @@ depends=('python' 'devtools' 'python-dateutil' 'python-pytz')
 
 package() {
   cd $startdir
-  install -m755 -d /usr/bin
-  install -m755 chrrepomake /usr/bin
+  install -m755 -d ${pkgdir}/usr/bin
+  install -m755 chrrepomake ${pkgdir}/usr/bin
 }
 
