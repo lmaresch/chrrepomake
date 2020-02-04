@@ -205,16 +205,22 @@ def analyzepkgbuildfiles(pkgbuildfiles):
         exit(1)
     return pkgbuilds
 
-def checkchroot(builddir):
-    if os.path.exists(builddir):
-        info('Builddir \'{0}\' already exists...'.format(builddir))
+def createdir(name, path):
+    if os.path.exists(path):
+        info('Folder "{0}" \'{1}\' already exists...'.format(name, path))
     else:
-        warning('Builddir \'{0}\' doesn\'t exist, creating it...'.format(builddir))
+        warning('Folder "{0}" \'{1}\' doesn\'t exist, creating it...'.format(name, path))
         try:
-            os.makedirs(builddir)
+            os.makedirs(path)
         except:
-            error('Could not create builddir \'{0}\': {1}'.format(builddir, str(__name__)) + str(sys.exc_info()[0]))
+            error('Could not create "{0}" \'{1}\': {2}'.format(name, path, str(__name__)) + str(sys.exc_info()[0]))
             return False
+    return True
+
+
+def checkchroot(builddir):
+    if not createdir('Builddir', builddir):
+        return False
 
     rootdir = os.path.join(builddir, 'root')
     if os.path.exists(rootdir):
@@ -258,12 +264,15 @@ def checkchroot(builddir):
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', '-d', action='count', default=0, help='Enable debugging output.')
 parser.add_argument('--directory', '-D', action='store', default=os.getcwd(), help='Path to folder with repo-make.conf')
-parser.add_argument('--builddir', '-B', action='store', default=os.getenv('CHROOT', 'builddir'), help='Sets the path to the build dir. First environment variable CHROOT is checked, if not existing, build subfolder in the folder with repo-make.conf is used.')
+parser.add_argument('--builddir', '-B', action='store', default=os.getenv('CHROOT', 'build'), help='Sets the path to the build dir. First environment variable CHROOT is checked, if not existing, build subfolder in the folder with repo-make.conf is used.')
+parser.add_argument('--target', '-t', action='store', default='repo', help='Sets the path to the target folder, where all packages will be added to.')
 args = parser.parse_args()
 
 debugflag = args.debug
 repodir = args.directory
 builddir = os.path.abspath(args.builddir)
+targetdir = os.path.abspath(args.target)
+envdict = os.environ
 
 if os.getuid() == 0:
     error('This script cannot be executed as root. Exiting.')
@@ -284,5 +293,12 @@ for idx, entry in enumerate(pkgbuilds):
         warning('Package \'{0}\' will be disabled on \'{1}\' as it requires one of the following architectures: {2}'.format(entry.pkgname, makepkgconf['CARCH'], str(entry.archs)))
         pkgbuilds.remove(entry)
 
+if 'PKGDEST' in envdict:
+    warn('Overriding \'PKGDEST\'=\'{0}\' environment variable with new value {1}'.format(envdict['PKGDEST']), targetdir)
+debug('Set environment variable \'PKGDEST\' to \'{0}\''.format(targetdir))
+envdict.update({'PKGDEST': targetdir})
 
+if not createdir('Target', targetdir):
+    exit(1)
 
+        

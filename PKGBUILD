@@ -8,7 +8,7 @@ pkgdesc="Tool to autobuild a set of PKGBUILDs in a chroot environment"
 url="https://github.com/lmaresch/chrrepomake"
 arch=('any')
 license=('GPL2')
-depends=('python' 'devtools' 'python-dateutil' 'python-pytz')
+depends=('python' 'devtools' 'python-dateutil' 'python-pytz' 'sudo')
 
 
 package() {
