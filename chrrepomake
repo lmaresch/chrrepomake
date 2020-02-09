@@ -18,6 +18,7 @@ class Pkgbuild:
         self.pkgdesc = ''
         self.pkgver = ''
         self.pkgrel = ''
+        self.epoch = ''
         self.archs = []
         self.conflicts = []
         self.depends = []
@@ -25,8 +26,7 @@ class Pkgbuild:
         self.makedepends = []
         self.unknownparams = dict()
         self.ignoredparams = ['source', 'sha256sums', 'md5sums', 'sha512sums', 'install', 'backup', 'url', 'license']
-        self.packagefilename = ''
-        self.packagedebugfilename = ''
+        self.packagearch = ''
 
     def __str__(self):
         return '| {0:30.30} | {1:20.20} | {2:4} | {3:50.50} | {4:60.60} |'.format(self.pkgname, self.pkgver, self.pkgrel, str(self.archs), str(self.depends))
@@ -48,6 +48,8 @@ class Pkgbuild:
                         self.pkgver = line[line.index('=') + 1:]
                     elif line.startswith('pkgrel'):
                         self.pkgrel = line[line.index('=') + 1:]
+                    elif line.startswith('epoch'):
+                        self.epoch = line[line.index('=') + 1:]
                     elif line.startswith('arch'):
                         for entry in line[line.index('=') + 1:].replace('(', '').replace(')', '').replace("'", '').replace('"', '').split(' '):
                             self.archs.append(entry)
@@ -85,11 +87,22 @@ class Pkgbuild:
         self._enumandreplacevariables(self.optdepends)
         self._enumandreplacevariables(self.makedepends)
         return True
+    
+    def getpackagefilenames(self):
+        return '{0}-{1}'.format(self.pkgname, self.getpackagesuffix())
+
+    def getpackagesuffix(self):
+        if self.epoch:
+            return '{0}:{1}-{2}-{3}{4}'.format(self.epoch, self.pkgver, self.pkgrel, self.packagearch, makepkgconf['PKGEXT'])
+        else:
+            return '{0}-{1}-{2}{3}'.format(self.pkgver, self.pkgrel, self.packagearch, makepkgconf['PKGEXT'])
 
     def executesonarch(self, architecture):
         if architecture in self.archs:
+            self.packagearch = architecture
             return True
         if 'any' in self.archs:
+            self.packagearch = 'any'
             return True
         return False
     
@@ -136,8 +149,8 @@ def warning(text):
 def error(text):
     print(bcolors.FAIL + str(datetime.datetime.now()) + ' ERR: ' + bcolors.ENDC + bcolors.BOLD + bcolors.FAIL + str(text) + bcolors.ENDC)
 
-def readmakepkgconf():
-    makepkgconf = '/etc/makepkg.conf'
+def readmakepkgconf(builddir):
+    makepkgconf = os.path.join(builddir, 'root', 'etc', 'makepkg.conf')
     info('Reading {0}...'.format(makepkgconf))
     config = dict()
     try:
@@ -279,7 +292,7 @@ if os.getuid() == 0:
     exit(1)
 if not checkchroot(builddir):
     exit(1)
-makepkgconf = readmakepkgconf()
+makepkgconf = readmakepkgconf(builddir)
 debug('makepkgconf: {0}'.format(str(makepkgconf)))
 repomakeconf = os.path.join(repodir, 'repo-make.conf')
 pkgbuildfiles = getentriesfromrepomakeconf(repomakeconf)
@@ -300,5 +313,38 @@ envdict.update({'PKGDEST': targetdir})
 
 if not createdir('Target', targetdir):
     exit(1)
+repoadded = False
+with open(os.path.join(builddir, 'root', 'etc', 'pacman.conf')) as f:
+    if targetdir in f.read():
+        repoadded = True
 
-        
+if not repoadded:
+    info('Adding targetdir \'{0}\' to pacman.conf, so created packages can be installed if needed.'.format(targetdir))
+    newrepo = '[vdr4arch]\nSigLevel = TrustAll\nServer = file://{0}\n'.format(targetdir)
+    content = ''
+    with open(os.path.join(builddir, 'root', 'etc', 'pacman.conf')) as f:
+        content = f.read()
+    with open(os.path.join(targetdir, 'pacman.conf'), 'w') as newf:
+        newf.write(content)
+        newf.write(newrepo)
+    echocmd = subprocess.run(['sudo', 'cp', os.path.join(targetdir, 'pacman.conf'), os.path.join(builddir, 'root', 'etc', 'pacman.conf')])
+    os.remove(os.path.join(targetdir, 'pacman.conf'))
+    if echocmd.returncode != 0:
+        error('Unexpected error in {0}: '.format(str(__name__)) + str(sys.exc_info()[0]))    
+        exit(1)
+
+if not os.path.exists(os.path.join(targetdir, 'vdr4arch.db.tar.gz')):
+    warning('Creating repository for new packages...')
+    repoadd = subprocess.run(['repo-add', os.path.join(targetdir, 'vdr4arch.db.tar.gz')])
+    if repoadd.returncode != 0:
+        error('Executing repo-add {0} failed with error {1}'.format(os.path.join(targetdir, 'vdr4arch.db.tar.gz'), str(repoadd.returncode)))
+        exit(1)
+
+for package in pkgbuilds:
+    info('Installing package {0}'.format(package.pkgname))
+    packcmd = subprocess.run(['makechrootpkg', '-c', '-r', builddir], cwd=os.path.dirname(package.pkgbuildpath))
+    if packcmd.returncode != 0:
+        error('Unexpected error in {0}: '.format(str(__name__)) + str(sys.exc_info()[0]))    
+        exit(1)
+    info('Adding package {0} to repository'.format(package.getpackagefilenames()))
+    repoaddcmd = subprocess.run(['repo-add', os.path.join(targetdir, 'vdr4arch.db.tar.gz'), os.path.join(targetdir, package.getpackagefilenames())])
