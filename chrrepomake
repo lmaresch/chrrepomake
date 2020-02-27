@@ -89,7 +89,10 @@ class Pkgbuild:
         return True
     
     def getpackagefilenames(self):
-        return '{0}-{1}'.format(self.pkgname, self.getpackagesuffix())
+        packages = []
+        for package in self.pkgname.replace('(', '').replace(')', '').split(' '):
+            packages.append('{0}-{1}'.format(package, self.getpackagesuffix()))
+        return packages
 
     def getpackagesuffix(self):
         if self.epoch:
@@ -320,7 +323,7 @@ with open(os.path.join(builddir, 'root', 'etc', 'pacman.conf')) as f:
 
 if not repoadded:
     info('Adding targetdir \'{0}\' to pacman.conf, so created packages can be installed if needed.'.format(targetdir))
-    newrepo = '[vdr4arch]\nSigLevel = TrustAll\nServer = file://{0}\n'.format(targetdir)
+    newrepo = '[vdr4arch]\nSigLevel = Optional TrustAll\nServer = file://{0}\n'.format(targetdir)
     content = ''
     with open(os.path.join(builddir, 'root', 'etc', 'pacman.conf')) as f:
         content = f.read()
@@ -341,10 +344,26 @@ if not os.path.exists(os.path.join(targetdir, 'vdr4arch.db.tar.gz')):
         exit(1)
 
 for package in pkgbuilds:
+    counter = 0
+    packagefilenames = package.getpackagefilenames()
+    for packagename in packagefilenames:
+        if os.path.exists(os.path.join(targetdir, packagename)):
+            info('Package {0} already built'.format(packagename))
+            counter += 1
+    if counter == len(packagefilenames):
+        continue
     info('Installing package {0}'.format(package.pkgname))
     packcmd = subprocess.run(['makechrootpkg', '-c', '-r', builddir], cwd=os.path.dirname(package.pkgbuildpath))
     if packcmd.returncode != 0:
-        error('Unexpected error in {0}: '.format(str(__name__)) + str(sys.exc_info()[0]))    
+        error('Executing \'makechrootpkg -c -r {0}\' failed with error code {1}'.format(builddir, packcmd.returncode))    
         exit(1)
-    info('Adding package {0} to repository'.format(package.getpackagefilenames()))
-    repoaddcmd = subprocess.run(['repo-add', os.path.join(targetdir, 'vdr4arch.db.tar.gz'), os.path.join(targetdir, package.getpackagefilenames())])
+    for packagename in packagefilenames:
+        info('Adding package {0} to repository'.format(packagename))
+        repoaddcmd = subprocess.run(['repo-add', os.path.join(targetdir, 'vdr4arch.db.tar.gz'), os.path.join(targetdir, packagename)])
+        if repoaddcmd.returncode != 0:
+            error('Executing \'repo-add {0} {1}\' failed with error code {2}'.format(os.path.join(targetdir, 'vdr4arch.db.tar.gz'), os.path.join(targetdir, packagename), repoaddcmd.returncode))
+            exit(1)
+    info('Update repo database...')
+    repoupdate = subprocess.run(['/usr/bin/arch-nspawn', os.path.join(builddir, 'root'), '/usr/sbin/pacman', '-Sy'])
+    if repoupdate.returncode != 0:
+        error('Executing \'/usr/bin/arch-nspawn {0} /usr/sbin/pacman -Sy\' failed with error code {1}'.format(os.path.join(builddir, 'root'), repoupdate.returncode))
