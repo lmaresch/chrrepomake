@@ -2,7 +2,7 @@
 
 # Maintainer: Libor Maresch <github@maresch.family>
 pkgname=chrrepomake
-pkgver=0.0.4
+pkgver=0.0.5
 pkgrel=1
 pkgdesc="Tool to autobuild a set of PKGBUILDs in a chroot environment"
 url="https://github.com/lmaresch/chrrepomake"

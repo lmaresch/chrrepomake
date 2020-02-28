@@ -310,7 +310,7 @@ for idx, entry in enumerate(pkgbuilds):
         pkgbuilds.remove(entry)
 
 if 'PKGDEST' in envdict:
-    warn('Overriding \'PKGDEST\'=\'{0}\' environment variable with new value {1}'.format(envdict['PKGDEST']), targetdir)
+    warning('Overriding \'PKGDEST\'=\'{0}\' environment variable with new value {1}'.format(envdict['PKGDEST']), targetdir)
 debug('Set environment variable \'PKGDEST\' to \'{0}\''.format(targetdir))
 envdict.update({'PKGDEST': targetdir})
 
